@@ -67,23 +67,19 @@ where
             }
         }
 
-        for ancestor in deleted_ancestors {
-            println!("{:?}", ancestor);
-        }
-
         // We have found the node to delete `curr`, and we have the ancestors to `curr`.
 
         // We need to find the right-most of the left subtree `swp`, and swap it with `curr`.
         // If the node to delete `curr` is a leaf, then we do not need to find a replacement
         // node `swp` to keep it a valid binary search tree.
-        let mut swp_ancestors : Vec<(&mut Bound<Q>, Option<&Bound<Q>>)> = Vec::new();
-        if curr.left.is_some() && curr.right.is_none() {
+        let mut swp_ancestors = Vec::new();
+        if curr.left.is_some() {
             let mut swp_curr = &mut **curr.left.as_mut().unwrap();
             let left_max = match swp_curr.left {
                 None => None,
                 Some(ref left) => Some(&left.value),
             };
-            swp_ancestors.push((&mut swp_curr.value, left_max));
+            swp_ancestors.push((&mut swp_curr.key, &mut swp_curr.value, left_max));
 
 
             // Walk right until we reach a leaf.
@@ -93,15 +89,15 @@ where
                     Some(ref left) => Some(&left.value),
                 };
                 swp_curr = right_subtree;
-                swp_ancestors.push((&mut swp_curr.value, left_max));
+                swp_ancestors.push((&mut swp_curr.key, &mut swp_curr.value, left_max));
             }
-        } else if curr.left.is_none() && curr.right.is_some() {
+        } else if curr.right.is_some() {
             let mut swp_curr = curr.right.as_mut().unwrap();
             let right_max = match swp_curr.right {
                 None => None,
                 Some(ref right) => Some(&right.value),
             };
-            swp_ancestors.push((&mut swp_curr.value, right_max));
+            swp_ancestors.push((&mut swp_curr.key, &mut swp_curr.value, right_max));
 
             // Walk left until we reach a leaf.
             while let Some(ref mut left_subtree) = swp_curr.left {
@@ -110,15 +106,18 @@ where
                     Some(ref right) => Some(&right.value),
                 };
                 swp_curr = left_subtree;
-                swp_ancestors.push((&mut swp_curr.value, right_max));
+                swp_ancestors.push((&mut swp_curr.key, &mut swp_curr.value, right_max));
             }
         }
+
+        let mut curr_max = None;
 
         // If we have ancestors to the swp (swp is included in the swp_ancestors),
         // then we need to swap `swp` <-> `curr`.
         if !swp_ancestors.is_empty() {
             let swp = swp_ancestors.last_mut().unwrap();
-            mem::swap(swp.0, &mut curr.value);
+            mem::swap(swp.0, &mut curr.key); // Swap the key between swp and curr.
+            mem::swap(swp.1, &mut curr.value); // Swap the value between swp and curr.
 
             if swp_ancestors.len() == 1 {
                 if curr.left.is_some() {
@@ -127,10 +126,104 @@ where
                     curr.right = None;
                 }
             } else {
-                for (swp_ancestor_value, other_subtree_max) in swp_ancestors.into_iter().rev().skip(1) {
+                let mut parent_key = None;
 
+                for (i, (swp_ancestor_key, swp_ancestor_value, other_subtree_max)) in swp_ancestors.into_iter().rev().skip(1).enumerate() {
+                    if i == 0 {
+                        parent_key = Some(swp_ancestor_key.clone());
+                    }
+
+                    // We have to reset the value to be the current's node right-bound,
+                    // as the previous value might be based on the right-bound of swp,
+                    // which is now above the current node.
+                    *swp_ancestor_value = swp_ancestor_key.1.clone();
+
+                    let mut value_changed = false;
+                    // Compare swp_ancestor_value to other_subtree_max.
+                    if let Some(other_subtree_value) = other_subtree_max {
+                        if cmp_right_bound(other_subtree_value, swp_ancestor_value) == Greater {
+                            value_changed = true;
+                            *swp_ancestor_value = other_subtree_value.clone();
+                        }
+                    }
+
+                    // Compare curr_max to swp_ancestor_value
+                    if let Some(curr_max) = curr_max {
+                        if cmp_right_bound(curr_max, swp_ancestor_value) == Greater {
+                            value_changed = true;
+                            *swp_ancestor_value = curr_max.clone();
+                        }
+                    }
+
+                    if !value_changed {
+                        break;
+                    }
+
+                    curr_max = Some(swp_ancestor_value);
+                }
+
+                // Possibly update value of `curr`.
+                let left_max = match curr.left {
+                    None => None,
+                    Some(ref left) => Some(&left.value),
+                };
+                let right_max = match curr.right {
+                    None => None,
+                    Some(ref right) => Some(&right.value),
+                };
+
+                if let Some(left_max) = left_max {
+                    if cmp_right_bound(left_max, &curr.value) == Greater {
+                        curr.value = left_max.clone();
+                    }
+                }
+
+                if let Some(right_max) = right_max {
+                    if cmp_right_bound(right_max, &curr.value) == Greater {
+                        curr.value = right_max.clone();
+                    }
+                }
+
+                // visit swp_ancestors and delete link to old node.
+                if curr.left.is_some() {
+                    let mut swp_curr = &mut **curr.left.as_mut().unwrap();
+
+                    if &swp_curr.key == parent_key.as_ref().unwrap() {
+                        swp_curr.right = None;
+                    } else {
+                        // Walk right until we reach the parent.
+                        while let Some(ref mut right_subtree) = swp_curr.right {
+                            swp_curr = right_subtree;
+                            if &swp_curr.key == parent_key.as_ref().unwrap() {
+                                swp_curr.right = None;
+                            }
+                        }
+                    }
+                } else if curr.right.is_some() {
+                    let mut swp_curr = &mut **curr.right.as_mut().unwrap();
+
+                    if &swp_curr.key == parent_key.as_ref().unwrap() {
+                        swp_curr.left = None;
+                    } else {
+                        // Walk left until we reach the parent.
+                        while let Some(ref mut left_subtree) = swp_curr.left {
+                            swp_curr = left_subtree;
+                            if &swp_curr.key == parent_key.as_ref().unwrap() {
+                                swp_curr.left = None;
+                            }
+                        }
+                    }
+                } else {
+                    unreachable!();
                 }
             }
+        }
+
+        // Update the value of the ancestors of curr.
+        // If curr was a leaf, we need to keep track of its direct parent,
+        // so that we can find it afterwards and remove its link to curr.
+        for (curr_ancestor_value, other_subtree_max) in deleted_ancestors.into_iter().rev() {
+
         }
 
         // We probably want to swap using `std::mem::swap(curr.key, swp.key)`.
@@ -542,6 +635,27 @@ where
         Unbounded => None,
     };
     let r2_max = match &r2.1 {
+        Included(x) => Some((x, 2)),
+        Excluded(x) => Some((x, 1)),
+        Unbounded => None,
+    };
+
+    match (r1_max, r2_max) {
+        (None, None) => Equal,
+        (None, Some(_)) => Greater,
+        (Some(_), None) => Less,
+        (Some(r1), Some(ref r2)) => r1.cmp(r2),
+    }
+}
+
+fn cmp_right_bound<Q>(r1: &Bound<Q>, r2: &Bound<Q>) -> Ordering
+where Q: Ord {
+    let r1_max = match r1 {
+        Included(x) => Some((x, 2)),
+        Excluded(x) => Some((x, 1)),
+        Unbounded => None,
+    };
+    let r2_max = match r2 {
         Included(x) => Some((x, 2)),
         Excluded(x) => Some((x, 1)),
         Unbounded => None,
