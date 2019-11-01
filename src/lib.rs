@@ -1,5 +1,6 @@
 use std::cmp::Ordering;
 use std::cmp::Ordering::*;
+use std::mem;
 use std::ops::Bound;
 use std::ops::Bound::*;
 
@@ -25,8 +26,122 @@ where
 
 impl<Q> IntervalTree<Q>
 where
-    Q: Ord + Clone,
+    Q: Ord + Clone + std::fmt::Debug,
 {
+    pub fn delete(&mut self, range: &Range<Q>) {
+        if self.root.is_none() {
+            return;
+        }
+
+        let mut curr = &mut **self.root.as_mut().unwrap();
+        let mut deleted_ancestors = Vec::new();
+        loop {
+            match cmp(&curr.key, range) {
+                Less => {
+                    match curr.right {
+                        None => return,
+                        Some(ref mut node) => {
+                            let left_max = match curr.left {
+                                None => None,
+                                Some(ref left) => Some(&left.value),
+                            };
+                            deleted_ancestors.push((&mut curr.value, left_max));
+                            curr = node;
+                        }
+                    };
+                }
+                Greater => {
+                    match curr.left {
+                        None => return,
+                        Some(ref mut node) => {
+                            let right_max = match curr.right {
+                                None => None,
+                                Some(ref right) => Some(&right.value),
+                            };
+                            deleted_ancestors.push((&mut curr.value, right_max));
+                            curr = node;
+                        }
+                    }
+                }
+                Equal => break,
+            }
+        }
+
+        for ancestor in deleted_ancestors {
+            println!("{:?}", ancestor);
+        }
+
+        // We have found the node to delete `curr`, and we have the ancestors to `curr`.
+
+        // We need to find the right-most of the left subtree `swp`, and swap it with `curr`.
+        // If the node to delete `curr` is a leaf, then we do not need to find a replacement
+        // node `swp` to keep it a valid binary search tree.
+        let mut swp_ancestors : Vec<(&mut Bound<Q>, Option<&Bound<Q>>)> = Vec::new();
+        if curr.left.is_some() && curr.right.is_none() {
+            let mut swp_curr = &mut **curr.left.as_mut().unwrap();
+            let left_max = match swp_curr.left {
+                None => None,
+                Some(ref left) => Some(&left.value),
+            };
+            swp_ancestors.push((&mut swp_curr.value, left_max));
+
+
+            // Walk right until we reach a leaf.
+            while let Some(ref mut right_subtree) = swp_curr.right {
+                let left_max = match swp_curr.left {
+                    None => None,
+                    Some(ref left) => Some(&left.value),
+                };
+                swp_curr = right_subtree;
+                swp_ancestors.push((&mut swp_curr.value, left_max));
+            }
+        } else if curr.left.is_none() && curr.right.is_some() {
+            let mut swp_curr = curr.right.as_mut().unwrap();
+            let right_max = match swp_curr.right {
+                None => None,
+                Some(ref right) => Some(&right.value),
+            };
+            swp_ancestors.push((&mut swp_curr.value, right_max));
+
+            // Walk left until we reach a leaf.
+            while let Some(ref mut left_subtree) = swp_curr.left {
+                let right_max = match swp_curr.right {
+                    None => None,
+                    Some(ref right) => Some(&right.value),
+                };
+                swp_curr = left_subtree;
+                swp_ancestors.push((&mut swp_curr.value, right_max));
+            }
+        }
+
+        // If we have ancestors to the swp (swp is included in the swp_ancestors),
+        // then we need to swap `swp` <-> `curr`.
+        if !swp_ancestors.is_empty() {
+            let swp = swp_ancestors.last_mut().unwrap();
+            mem::swap(swp.0, &mut curr.value);
+
+            if swp_ancestors.len() == 1 {
+                if curr.left.is_some() {
+                    curr.left = None;
+                } else {
+                    curr.right = None;
+                }
+            } else {
+                for (swp_ancestor_value, other_subtree_max) in swp_ancestors.into_iter().rev().skip(1) {
+
+                }
+            }
+        }
+
+        // We probably want to swap using `std::mem::swap(curr.key, swp.key)`.
+        // Doing so might affect the max value of the next ancestors (between `curr` and `swp`).
+        // We'll keep a list of next ancestors (just like ancestors), and update their max value.
+        // Then, if `curr` changed max value, we need to traverse the first ancestors and update
+        // their max value.
+        // We also need to update the parent of `swp`, to make `left` or `right` be None.
+
+    }
+
     pub fn iter<'a>(&'a self) -> IntervalTreeIter<'a, Q> {
         IntervalTreeIter {
             to_visit: vec![],
@@ -773,5 +888,28 @@ mod tests {
         }
 
         assert_eq!(tree.iter().count(), inorder.len());
+    }
+
+    #[test]
+    fn delete_works_as_expected() {
+        let mut tree = IntervalTree::default();
+
+        let key1 = (Included(5), Included(5));
+        let key2 = (Included(4), Included(4));
+        let key3 = (Included(3), Included(10));
+        let key4 = (Included(0), Included(8));
+        let key5 = (Included(1), Included(7));
+        let key6 = (Excluded(10), Excluded(20));
+        let key7 = (Included(8), Included(50));
+
+        tree.insert(key1.clone());
+        tree.insert(key2.clone());
+        tree.insert(key3.clone());
+        tree.insert(key4.clone());
+        tree.insert(key5.clone());
+        tree.insert(key6.clone());
+        tree.insert(key7.clone());
+
+        tree.delete(&key5);
     }
 }
