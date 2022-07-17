@@ -91,27 +91,29 @@ where
     /// binary search properties of this tree.
     /// It is ok to insert a `range` that overlaps with an existing interval in the tree.
     ///
-    ///  An improvement to come is to rebalance
-    /// the tree (following an AVL or a red-black scheme).
+    /// An improvement to come is to rebalance the tree (following an AVL or a red-black scheme).
     ///
     /// # Examples
     ///
     /// ```
     /// use std::ops::Bound::{Included, Excluded, Unbounded};
+    /// use unbounded_interval_tree::IntervalTree;
     ///
-    /// let mut int_tree = unbounded_interval_tree::IntervalTree::default();
+    /// let mut int_tree = IntervalTree::default();
     ///
     /// int_tree.insert((Included(5), Excluded(9)));
-    /// int_tree.insert((Unbounded, Included(10)));
+    /// int_tree.insert(..=10);
     ///
-    /// let mut str_tree = unbounded_interval_tree::IntervalTree::default();
+    /// let mut str_tree: IntervalTree<&str> = IntervalTree::default();
     ///
-    /// str_tree.insert((Included("Noria"), Unbounded));
+    /// str_tree.insert("Noria"..);
     /// ```
-    pub fn insert(&mut self, range: Range<K>)
+    pub fn insert<R>(&mut self, range: R)
     where
         K: Clone,
+        R: RangeBounds<K>,
     {
+        let range = (range.start_bound().cloned(), range.end_bound().cloned());
         self.size += 1;
 
         // If the tree is empty, put new node at the root.
@@ -215,7 +217,9 @@ where
     ///
     /// ```
     /// use std::ops::Bound::{Included, Excluded, Unbounded};
-    /// let mut tree = unbounded_interval_tree::IntervalTree::default();
+    /// use unbounded_interval_tree::IntervalTree;
+    ///
+    /// let mut tree: IntervalTree<&str> = IntervalTree::default();
     ///
     /// let key1 = (Included("a"), Excluded("h"));
     /// let key2 = (Excluded("M"), Excluded("O"));
@@ -1141,10 +1145,10 @@ mod tests {
         let mut tree = IntervalTree::default();
 
         let root_key = (Included((1, 2)), Excluded((1, 4)));
-        let right_key = (Included((5, 10)), Included((5, 20)));
+        let right_key = (5, 10)..=(5, 20);
 
         tree.insert(root_key.clone());
-        tree.insert(right_key.clone());
+        tree.insert(right_key);
 
         assert!(tree.get_interval_overlaps(&((2, 0)..=(2, 30))).is_empty());
         assert_eq!(
@@ -1164,12 +1168,12 @@ mod tests {
     fn difference_works_as_expected() {
         let mut tree = IntervalTree::default();
 
-        let key1 = (Included(2), Excluded(10));
-        let key2 = (Included(4), Included(6));
+        let key1 = 2..10;
+        let key2 = 4..=6;
         let key3 = (Excluded(10), Excluded(20));
         let key4 = (Excluded(30), Included(35));
-        let key5 = (Included(30), Included(40));
-        let key6 = (Included(30), Included(35));
+        let key5 = 30..=40;
+        let key6 = 30..=35;
         let key7 = (Excluded(45), Unbounded);
         let key8 = (Included(60), Included(70));
 
@@ -1241,7 +1245,7 @@ mod tests {
 
     #[test]
     fn get_interval_difference_str_works_as_expected() {
-        let mut tree = IntervalTree::default();
+        let mut tree: IntervalTree<&str> = IntervalTree::default();
 
         let key1 = (Included("a"), Excluded("h"));
         let key2 = (Excluded("M"), Excluded("O"));
@@ -1274,7 +1278,7 @@ mod tests {
 
         let key1 = (Included(10), Excluded(20));
         let key2 = (Excluded(30), Excluded(40));
-        let key3 = (Included(40), Unbounded);
+        let key3 = 40..;
 
         tree.insert(key1);
         tree.insert(key2);
@@ -1290,7 +1294,7 @@ mod tests {
     fn contains_string_point_works_as_expected() {
         let mut tree = IntervalTree::default();
 
-        let key1 = (Included(String::from("a")), Excluded(String::from("h")));
+        let key1 = String::from("a")..String::from("h");
         let key2 = (Excluded(String::from("M")), Excluded(String::from("O")));
 
         tree.insert(key1);
@@ -1304,9 +1308,9 @@ mod tests {
 
     #[test]
     fn contains_str_point_works_as_expected() {
-        let mut tree = IntervalTree::default();
+        let mut tree: IntervalTree<&str> = IntervalTree::default();
 
-        let key1 = (Included("a"), Excluded("h"));
+        let key1 = "a".."h";
         let key2 = (Excluded("M"), Excluded("O"));
 
         tree.insert(key1);
@@ -1324,7 +1328,7 @@ mod tests {
 
         let key1 = (Included(10), Excluded(20));
         let key2 = (Excluded(30), Excluded(40));
-        let key3 = (Included(40), Unbounded);
+        let key3 = 40..;
 
         tree.insert(key1.clone());
         tree.insert(key2.clone());
@@ -1338,9 +1342,9 @@ mod tests {
 
     #[test]
     fn contains_str_works_as_expected() {
-        let mut tree = IntervalTree::default();
+        let mut tree: IntervalTree<&str> = IntervalTree::default();
 
-        let key1 = (Included("a"), Excluded("h"));
+        let key1 = "a".."h";
         let key2 = (Excluded("M"), Excluded("O"));
 
         tree.insert(key1.clone());
