@@ -22,7 +22,7 @@ type Range<K> = (Bound<K>, Bound<K>);
 
 /// The interval tree storing all the underlying intervals.
 ///
-/// There are two main ways of creating an interval tree.
+/// There are three ways to create an interval tree.
 /// ```
 /// use unbounded_interval_tree::IntervalTree;
 ///
@@ -36,6 +36,11 @@ type Range<K> = (Bound<K>, Bound<K>);
 /// // 2. Create an interval tree from an iterator.
 /// let ranges = vec!["hello"..="hi", "Allo"..="Bonjour"];
 /// let interval_tree = ranges.into_iter().collect::<IntervalTree<_>>();
+/// assert_eq!(interval_tree.len(), 2);
+///
+/// // 3. Create an interval tree from an array.
+/// let ranges = [(1, 5)..(1,9), (2, 3)..(3, 7)];
+/// let interval_tree = IntervalTree::from(ranges);
 /// assert_eq!(interval_tree.len(), 2);
 /// ```
 #[derive(Clone, Debug, PartialEq)]
@@ -85,6 +90,22 @@ where
         let mut interval_tree = Self::default();
 
         for interval in iter {
+            interval_tree.insert(interval);
+        }
+
+        interval_tree
+    }
+}
+
+impl<K, R, const N: usize> From<[R; N]> for IntervalTree<K>
+where
+    K: Ord + Clone,
+    R: RangeBounds<K>,
+{
+    fn from(intervals: [R; N]) -> Self {
+        let mut interval_tree = Self::default();
+
+        for interval in intervals {
             interval_tree.insert(interval);
         }
 
@@ -1013,6 +1034,16 @@ mod tests {
         let ranges = vec![0..5, 6..10, 10..15];
         let interval_tree: IntervalTree<_> = ranges.into_iter().collect();
 
+        assert_eq!(interval_tree.len(), 3);
+    }
+
+    #[test]
+    fn creates_from_array() {
+        let ranges = [0..5, 6..10, 10..15];
+        let interval_tree = IntervalTree::from(ranges.clone());
+        let other_interval_tree = ranges.into();
+
+        assert_eq!(interval_tree, other_interval_tree);
         assert_eq!(interval_tree.len(), 3);
     }
 
