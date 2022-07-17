@@ -116,7 +116,7 @@ where
         loop {
             curr.maybe_update_value(&range.1);
 
-            match cmp(&curr.key, &range) {
+            match Self::cmp(&curr.key, &range) {
                 Equal => return, // Don't insert a redundant key.
                 Less => {
                     match curr.right {
@@ -568,7 +568,7 @@ where
                         curr_end
                     } else {
                         let other_value = &curr.right.as_ref().unwrap().value;
-                        match cmp_endbound(curr_end, other_value) {
+                        match Self::cmp_endbound(curr_end, other_value) {
                             Greater | Equal => curr_end,
                             Less => other_value,
                         }
@@ -592,7 +592,7 @@ where
                         curr_end
                     } else {
                         let other_value = &curr.left.as_ref().unwrap().value;
-                        match cmp_endbound(curr_end, other_value) {
+                        match Self::cmp_endbound(curr_end, other_value) {
                             Greater | Equal => curr_end,
                             Less => other_value,
                         }
@@ -615,11 +615,11 @@ where
         // the ancestors' value so that they store the new max value in their
         // respective subtree.
         while let Some((value, max_other)) = path.pop() {
-            if cmp_endbound(value, max_other) == Equal {
+            if Self::cmp_endbound(value, max_other) == Equal {
                 break;
             }
 
-            match cmp_endbound(value, new_max) {
+            match Self::cmp_endbound(value, new_max) {
                 Equal => break,
                 Greater => *value = new_max.clone(),
                 Less => unreachable!("Can't have a new max that is bigger"),
@@ -685,6 +685,69 @@ where
     pub fn clear(&mut self) {
         self.root = None;
         self.size = 0;
+    }
+
+    fn cmp(r1: &Range<K>, r2: &Range<K>) -> Ordering {
+        // Sorting by lower bound, then by upper bound.
+        //   -> Unbounded is the smallest lower bound.
+        //   -> Unbounded is the biggest upper bound.
+        //   -> Included(x) < Excluded(x) for a lower bound.
+        //   -> Included(x) > Excluded(x) for an upper bound.
+
+        // Unpacking from a Bound is annoying, so let's map it to an Option<K>.
+        // Let's use this transformation to encode the Included/Excluded rules at the same time.
+        // Note that topological order is used during comparison, so if r1 and r2 have the same `x`,
+        // only then will the 2nd element of the tuple serve as a tie-breaker.
+        let r1_min = match &r1.0 {
+            Included(x) => Some((x, 1)),
+            Excluded(x) => Some((x, 2)),
+            Unbounded => None,
+        };
+        let r2_min = match &r2.0 {
+            Included(x) => Some((x, 1)),
+            Excluded(x) => Some((x, 2)),
+            Unbounded => None,
+        };
+
+        match (r1_min, r2_min) {
+            (None, None) => {} // Left-bounds are equal, we can't return yet.
+            (None, Some(_)) => return Less,
+            (Some(_), None) => return Greater,
+            (Some(r1), Some(ref r2)) => {
+                match r1.cmp(r2) {
+                    Less => return Less,
+                    Greater => return Greater,
+                    Equal => {} // Left-bounds are equal, we can't return yet.
+                };
+            }
+        };
+
+        // Both left-bounds are equal, we have to
+        // compare the right-bounds as a tie-breaker.
+        Self::cmp_endbound(&r1.1, &r2.1)
+    }
+
+    fn cmp_endbound(e1: &Bound<K>, e2: &Bound<K>) -> Ordering {
+        // Based on the encoding idea used in `cmp`.
+        // Note that we have inversed the 2nd value in the tuple,
+        // as the Included/Excluded rules are flipped for the upper bound.
+        let e1 = match e1 {
+            Included(x) => Some((x, 2)),
+            Excluded(x) => Some((x, 1)),
+            Unbounded => None,
+        };
+        let e2 = match e2 {
+            Included(x) => Some((x, 2)),
+            Excluded(x) => Some((x, 1)),
+            Unbounded => None,
+        };
+
+        match (e1, e2) {
+            (None, None) => Equal,
+            (None, Some(_)) => Greater,
+            (Some(_), None) => Less,
+            (Some(r1), Some(ref r2)) => r1.cmp(r2),
+        }
     }
 }
 
@@ -815,75 +878,6 @@ where
     }
 }
 
-fn cmp<K>(r1: &Range<K>, r2: &Range<K>) -> Ordering
-where
-    K: Ord,
-{
-    // Sorting by lower bound, then by upper bound.
-    //   -> Unbounded is the smallest lower bound.
-    //   -> Unbounded is the biggest upper bound.
-    //   -> Included(x) < Excluded(x) for a lower bound.
-    //   -> Included(x) > Excluded(x) for an upper bound.
-
-    // Unpacking from a Bound is annoying, so let's map it to an Option<K>.
-    // Let's use this transformation to encode the Included/Excluded rules at the same time.
-    // Note that topological order is used during comparison, so if r1 and r2 have the same `x`,
-    // only then will the 2nd element of the tuple serve as a tie-breaker.
-    let r1_min = match &r1.0 {
-        Included(x) => Some((x, 1)),
-        Excluded(x) => Some((x, 2)),
-        Unbounded => None,
-    };
-    let r2_min = match &r2.0 {
-        Included(x) => Some((x, 1)),
-        Excluded(x) => Some((x, 2)),
-        Unbounded => None,
-    };
-
-    match (r1_min, r2_min) {
-        (None, None) => {} // Left-bounds are equal, we can't return yet.
-        (None, Some(_)) => return Less,
-        (Some(_), None) => return Greater,
-        (Some(r1), Some(ref r2)) => {
-            match r1.cmp(r2) {
-                Less => return Less,
-                Greater => return Greater,
-                Equal => {} // Left-bounds are equal, we can't return yet.
-            };
-        }
-    };
-
-    // Both left-bounds are equal, we have to
-    // compare the right-bounds as a tie-breaker.
-    cmp_endbound(&r1.1, &r2.1)
-}
-
-fn cmp_endbound<K>(e1: &Bound<K>, e2: &Bound<K>) -> Ordering
-where
-    K: Ord,
-{
-    // Based on the encoding idea used in `cmp`.
-    // Note that we have inversed the 2nd value in the tuple,
-    // as the Included/Excluded rules are flipped for the upper bound.
-    let e1 = match e1 {
-        Included(x) => Some((x, 2)),
-        Excluded(x) => Some((x, 1)),
-        Unbounded => None,
-    };
-    let e2 = match e2 {
-        Included(x) => Some((x, 2)),
-        Excluded(x) => Some((x, 1)),
-        Unbounded => None,
-    };
-
-    match (e1, e2) {
-        (None, None) => Equal,
-        (None, Some(_)) => Greater,
-        (Some(_), None) => Less,
-        (Some(r1), Some(ref r2)) => r1.cmp(r2),
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1009,13 +1003,13 @@ mod tests {
         let key_str2 = (Included("bbc"), Included("bde"));
         let key_str3: (_, Bound<&str>) = (Included("bbc"), Unbounded);
 
-        assert_eq!(cmp(&key1, &key1), Equal);
-        assert_eq!(cmp(&key1, &key2), Less);
-        assert_eq!(cmp(&key2, &key3), Less);
-        assert_eq!(cmp(&key0, &key1), Less);
-        assert_eq!(cmp(&key4, &key5), Less);
-        assert_eq!(cmp(&key_str1, &key_str2), Less);
-        assert_eq!(cmp(&key_str2, &key_str3), Less);
+        assert_eq!(IntervalTree::cmp(&key1, &key1), Equal);
+        assert_eq!(IntervalTree::cmp(&key1, &key2), Less);
+        assert_eq!(IntervalTree::cmp(&key2, &key3), Less);
+        assert_eq!(IntervalTree::cmp(&key0, &key1), Less);
+        assert_eq!(IntervalTree::cmp(&key4, &key5), Less);
+        assert_eq!(IntervalTree::cmp(&key_str1, &key_str2), Less);
+        assert_eq!(IntervalTree::cmp(&key_str2, &key_str3), Less);
     }
 
     #[test]
