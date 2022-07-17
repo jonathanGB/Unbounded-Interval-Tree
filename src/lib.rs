@@ -1,6 +1,6 @@
 //! Implementation of an interval tree that works with inclusive/exclusive
 //! bounds, as well as unbounded intervals. It is based on the
-//! data structure described in Cormen et al. 
+//! data structure described in Cormen et al.
 //! (2009, Section 14.3: Interval trees, pp. 348–354). It provides methods
 //! for "stabbing queries" (as in "is point `p` or an interval `i` contained in any intervals
 //! in the tree of intervals?"), as well as helpers to get the difference between a queried
@@ -9,29 +9,29 @@
 
 use std::cmp::Ordering;
 use std::cmp::Ordering::*;
-use std::ops::Bound;
-use std::ops::Bound::*;
 use std::fmt;
 use std::mem;
+use std::ops::Bound;
+use std::ops::Bound::*;
 
-type Range<Q> = (Bound<Q>, Bound<Q>);
+type Range<K> = (Bound<K>, Bound<K>);
 
 /// The interval tree storing all the underlying intervals.
 #[derive(Clone, Debug, PartialEq)]
-pub struct IntervalTree<Q: Ord + Clone> {
-    root: Option<Box<Node<Q>>>,
+pub struct IntervalTree<K: Ord + Clone> {
+    root: Option<Box<Node<K>>>,
     size: usize,
 }
 
 /// An inorder interator through the interval tree.
-pub struct IntervalTreeIter<'a, Q: Ord + Clone> {
-    to_visit: Vec<&'a Box<Node<Q>>>,
-    curr: &'a Option<Box<Node<Q>>>,
+pub struct IntervalTreeIter<'a, K: Ord + Clone> {
+    to_visit: Vec<&'a Box<Node<K>>>,
+    curr: &'a Option<Box<Node<K>>>,
 }
 
-impl<Q> fmt::Display for IntervalTree<Q>
+impl<K> fmt::Display for IntervalTree<K>
 where
-    Q: Ord + Clone + fmt::Display,
+    K: Ord + Clone + fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.root {
@@ -41,18 +41,21 @@ where
     }
 }
 
-impl<Q> Default for IntervalTree<Q>
+impl<K> Default for IntervalTree<K>
 where
-    Q: Ord + Clone,
+    K: Ord + Clone,
 {
-    fn default() -> IntervalTree<Q> {
-        IntervalTree { root: None, size: 0 }
+    fn default() -> IntervalTree<K> {
+        IntervalTree {
+            root: None,
+            size: 0,
+        }
     }
 }
 
-impl<Q> IntervalTree<Q>
+impl<K> IntervalTree<K>
 where
-    Q: Ord + Clone,
+    K: Ord + Clone,
 {
     /// Produces an inorder iterator for the interval tree.
     ///
@@ -73,7 +76,7 @@ where
     /// assert_eq!(iter.next(), Some(&(Included(20), Included(30))));
     /// assert_eq!(iter.next(), None);
     /// ```
-    pub fn iter<'a>(&'a self) -> IntervalTreeIter<'a, Q> {
+    pub fn iter<'a>(&'a self) -> IntervalTreeIter<'a, K> {
         IntervalTreeIter {
             to_visit: vec![],
             curr: &self.root,
@@ -98,7 +101,7 @@ where
     ///
     /// str_tree.insert((Included("Noria"), Unbounded));
     /// ```
-    pub fn insert(&mut self, range: Range<Q>) {
+    pub fn insert(&mut self, range: Range<K>) {
         self.size += 1;
 
         // If the tree is empty, put new node at the root.
@@ -166,7 +169,7 @@ where
     /// assert!(str_tree.contains_point(&"Zebra"));
     /// assert!(!str_tree.contains_point(&"Noria"));
     /// ```
-    pub fn contains_point(&self, q: Q) -> bool {
+    pub fn contains_point(&self, q: K) -> bool {
         self.contains_interval((Included(q.clone()), Included(q.clone())))
     }
 
@@ -186,7 +189,7 @@ where
     /// assert!(tree.contains_interval((Included(20), Included(40))));
     /// assert!(!tree.contains_interval((Included(30), Included(50))));
     /// ```
-    pub fn contains_interval(&self, q: Range<Q>) -> bool {
+    pub fn contains_interval(&self, q: Range<K>) -> bool {
         self.get_interval_difference(q).is_empty()
     }
 
@@ -207,7 +210,7 @@ where
     ///            vec![&(Included(0), Included(5))]);
     /// assert!(tree.get_interval_overlaps(&(Included(10), Unbounded)).is_empty());
     /// ```
-    pub fn get_interval_overlaps(&self, q: &Range<Q>) -> Vec<&Range<Q>> {
+    pub fn get_interval_overlaps(&self, q: &Range<K>) -> Vec<&Range<K>> {
         let curr = &self.root;
         let mut acc = Vec::new();
 
@@ -237,7 +240,7 @@ where
     ///            vec![(Unbounded, Excluded(0))]);
     /// assert!(tree.get_interval_difference((Included(100), Unbounded)).is_empty());
     /// ```
-    pub fn get_interval_difference(&self, q: Range<Q>) -> Vec<Range<Q>> {
+    pub fn get_interval_difference(&self, q: Range<K>) -> Vec<Range<K>> {
         let overlaps = self.get_interval_overlaps(&q);
 
         // If there is no overlap, then the difference is the query `q` itself.
@@ -295,25 +298,37 @@ where
                 (Included(contiguous_max), Included(overlap_min))
                     if contiguous_max < overlap_min =>
                 {
-                    acc.push((Excluded(contiguous_max.clone()), Excluded(overlap_min.clone())));
+                    acc.push((
+                        Excluded(contiguous_max.clone()),
+                        Excluded(overlap_min.clone()),
+                    ));
                     contiguous = &overlap.1;
                 }
                 (Included(contiguous_max), Excluded(overlap_min))
                     if contiguous_max < overlap_min =>
                 {
-                    acc.push((Excluded(contiguous_max.clone()), Included(overlap_min.clone())));
+                    acc.push((
+                        Excluded(contiguous_max.clone()),
+                        Included(overlap_min.clone()),
+                    ));
                     contiguous = &overlap.1;
                 }
                 (Excluded(contiguous_max), Included(overlap_min))
                     if contiguous_max < overlap_min =>
                 {
-                    acc.push((Included(contiguous_max.clone()), Excluded(overlap_min.clone())));
+                    acc.push((
+                        Included(contiguous_max.clone()),
+                        Excluded(overlap_min.clone()),
+                    ));
                     contiguous = &overlap.1;
                 }
                 (Excluded(contiguous_max), Excluded(overlap_min))
                     if contiguous_max <= overlap_min =>
                 {
-                    acc.push((Included(contiguous_max.clone()), Included(overlap_min.clone())));
+                    acc.push((
+                        Included(contiguous_max.clone()),
+                        Included(overlap_min.clone()),
+                    ));
                     contiguous = &overlap.1;
                 }
                 _ => {}
@@ -359,9 +374,9 @@ where
     }
 
     fn get_interval_overlaps_rec<'a>(
-        curr: &'a Option<Box<Node<Q>>>,
-        q: &Range<Q>,
-        acc: &mut Vec<&'a Range<Q>>,
+        curr: &'a Option<Box<Node<K>>>,
+        q: &Range<K>,
+        acc: &mut Vec<&'a Range<K>>,
     ) {
         // If we reach None, stop recursing along this subtree.
         let node = match curr {
@@ -461,7 +476,7 @@ where
     /// Removes a random leaf from the tree,
     /// and returns the range stored in the said node.
     /// The returned value will be `None` if the tree is empty.
-    /// 
+    ///
     /// # Examples
     ///
     /// ```
@@ -471,23 +486,23 @@ where
     ///
     /// tree.insert((Included(5), Excluded(9)));
     /// tree.insert((Unbounded, Included(10)));
-    /// 
+    ///
     /// assert!(tree.contains_point(10));
     /// assert!(tree.contains_point(6));
-    /// 
+    ///
     /// let deleted = tree.remove_random_leaf();
     /// assert!(deleted.is_some());
     /// assert!(!tree.contains_point(10));
     /// assert!(tree.contains_point(6));
-    /// 
+    ///
     /// let deleted = tree.remove_random_leaf();
     /// assert!(deleted.is_some());
     /// assert!(!tree.contains_point(6));
-    /// 
+    ///
     /// let deleted = tree.remove_random_leaf();
     /// assert!(deleted.is_none());
     /// ```
-    pub fn remove_random_leaf(&mut self) -> Option<Range<Q>> {
+    pub fn remove_random_leaf(&mut self) -> Option<Range<K>> {
         use rand::random;
 
         // If interval tree is empty, just return None.
@@ -513,8 +528,8 @@ where
         // on the non-visited path (recall that this is a BST). It
         // is very much possible that both elements are equal: that would imply that the
         // current value depends solely on the non-visited path, hence the deleted
-        // node will have no impact up the tree, at least from the current point. 
-        let mut path : Vec<(_, _)> = Vec::new();
+        // node will have no impact up the tree, at least from the current point.
+        let mut path: Vec<(_, _)> = Vec::new();
 
         // Used to keep track of the direction taken from a node.
         enum Direction {
@@ -527,10 +542,15 @@ where
             // Note that at this point in the loop, `curr` can't be a leaf.
             // Indeed, we traverse the tree such that `curr` is always an
             // internal node, so that it is easy to replace a leaf from `curr`.
-            let direction = if curr.left.is_none() { Direction::RIGHT }
-                else if curr.right.is_none() { Direction::LEFT }
-                else if random() { Direction::LEFT }
-                else { Direction::RIGHT };
+            let direction = if curr.left.is_none() {
+                Direction::RIGHT
+            } else if curr.right.is_none() {
+                Direction::LEFT
+            } else if random() {
+                Direction::LEFT
+            } else {
+                Direction::RIGHT
+            };
             // End-bound of the current node.
             let curr_end = &curr.key.1;
 
@@ -610,19 +630,19 @@ where
     }
 
     /// Returns the number of ranges stored in the interval tree.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use std::ops::Bound::{Included, Excluded, Unbounded};
     ///
     /// let mut tree = unbounded_interval_tree::IntervalTree::default();
-    /// 
+    ///
     /// assert_eq!(tree.len(), 0);
     ///
     /// tree.insert((Included(5), Excluded(9)));
     /// tree.insert((Unbounded, Included(10)));
-    /// 
+    ///
     /// assert_eq!(tree.len(), 2);
     /// ```
     pub fn len(&self) -> usize {
@@ -630,18 +650,18 @@ where
     }
 
     /// Returns `true` if the map contains no element.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use std::ops::Bound::{Included, Excluded, Unbounded};
     ///
     /// let mut tree = unbounded_interval_tree::IntervalTree::default();
-    /// 
+    ///
     /// assert!(tree.is_empty());
     ///
     /// tree.insert((Included(5), Excluded(9)));
-    /// 
+    ///
     /// assert!(!tree.is_empty());
     /// ```
     pub fn is_empty(&self) -> bool {
@@ -649,17 +669,17 @@ where
     }
 
     /// Clear the interval tree, removing all values stored.
-    /// 
+    ///
     /// # Examples
-    /// 
+    ///
     /// ```
     /// use std::ops::Bound::{Included, Excluded, Unbounded};
     ///
     /// let mut tree = unbounded_interval_tree::IntervalTree::default();
-    /// 
+    ///
     /// tree.insert((Included(5), Unbounded));
     /// tree.clear();
-    /// 
+    ///
     /// assert!(tree.is_empty());
     /// ```
     pub fn clear(&mut self) {
@@ -668,11 +688,11 @@ where
     }
 }
 
-impl<'a, Q> Iterator for IntervalTreeIter<'a, Q>
+impl<'a, K> Iterator for IntervalTreeIter<'a, K>
 where
-    Q: Ord + Clone,
+    K: Ord + Clone,
 {
-    type Item = &'a Range<Q>;
+    type Item = &'a Range<K>;
 
     fn next(&mut self) -> Option<Self::Item> {
         if self.curr.is_none() && self.to_visit.is_empty() {
@@ -691,16 +711,16 @@ where
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct Node<Q: Ord + Clone> {
-    key: Range<Q>,
-    value: Bound<Q>, // Max end-point.
-    left: Option<Box<Node<Q>>>,
-    right: Option<Box<Node<Q>>>,
+struct Node<K: Ord + Clone> {
+    key: Range<K>,
+    value: Bound<K>, // Max end-point.
+    left: Option<Box<Node<K>>>,
+    right: Option<Box<Node<K>>>,
 }
 
-impl<Q> fmt::Display for Node<Q>
+impl<K> fmt::Display for Node<K>
 where
-    Q: Ord + Clone + fmt::Display
+    K: Ord + Clone + fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let start = match self.key.0 {
@@ -722,20 +742,42 @@ where
         if self.left.is_none() && self.right.is_none() {
             write!(f, " {{ {},{} ({}) }} ", start, end, value)
         } else if self.left.is_none() {
-            write!(f, " {{ {},{} ({}) right:{}}} ", start, end, value, self.right.as_ref().unwrap())
+            write!(
+                f,
+                " {{ {},{} ({}) right:{}}} ",
+                start,
+                end,
+                value,
+                self.right.as_ref().unwrap()
+            )
         } else if self.right.is_none() {
-            write!(f, " {{ {},{} ({}) left:{}}} ", start, end, value, self.left.as_ref().unwrap())
+            write!(
+                f,
+                " {{ {},{} ({}) left:{}}} ",
+                start,
+                end,
+                value,
+                self.left.as_ref().unwrap()
+            )
         } else {
-            write!(f, " {{ {},{} ({}) left:{}right:{}}} ", start, end, value, self.left.as_ref().unwrap(), self.right.as_ref().unwrap())
+            write!(
+                f,
+                " {{ {},{} ({}) left:{}right:{}}} ",
+                start,
+                end,
+                value,
+                self.left.as_ref().unwrap(),
+                self.right.as_ref().unwrap()
+            )
         }
     }
 }
 
-impl<Q> Node<Q>
+impl<K> Node<K>
 where
-    Q: Ord + Clone,
+    K: Ord + Clone,
 {
-    pub fn new(range: Range<Q>) -> Node<Q> {
+    pub fn new(range: Range<K>) -> Node<K> {
         let max = range.1.clone();
 
         Node {
@@ -750,7 +792,7 @@ where
         self.left.is_none() && self.right.is_none()
     }
 
-    pub fn maybe_update_value(&mut self, inserted_max: &Bound<Q>) {
+    pub fn maybe_update_value(&mut self, inserted_max: &Bound<K>) {
         let self_max_q = match &self.value {
             Included(x) => Some((x, 2)),
             Excluded(x) => Some((x, 1)),
@@ -773,9 +815,9 @@ where
     }
 }
 
-fn cmp<Q>(r1: &Range<Q>, r2: &Range<Q>) -> Ordering
+fn cmp<K>(r1: &Range<K>, r2: &Range<K>) -> Ordering
 where
-    Q: Ord,
+    K: Ord,
 {
     // Sorting by lower bound, then by upper bound.
     //   -> Unbounded is the smallest lower bound.
@@ -783,7 +825,7 @@ where
     //   -> Included(x) < Excluded(x) for a lower bound.
     //   -> Included(x) > Excluded(x) for an upper bound.
 
-    // Unpacking from a Bound is annoying, so let's map it to an Option<Q>.
+    // Unpacking from a Bound is annoying, so let's map it to an Option<K>.
     // Let's use this transformation to encode the Included/Excluded rules at the same time.
     // Note that topological order is used during comparison, so if r1 and r2 have the same `x`,
     // only then will the 2nd element of the tuple serve as a tie-breaker.
@@ -811,14 +853,14 @@ where
         }
     };
 
-    // Both left-bounds are equal, we have to 
+    // Both left-bounds are equal, we have to
     // compare the right-bounds as a tie-breaker.
     cmp_endbound(&r1.1, &r2.1)
 }
 
-fn cmp_endbound<Q>(e1: &Bound<Q>, e2: &Bound<Q>) -> Ordering
+fn cmp_endbound<K>(e1: &Bound<K>, e2: &Bound<K>) -> Ordering
 where
-    Q: Ord,
+    K: Ord,
 {
     // Based on the encoding idea used in `cmp`.
     // Note that we have inversed the 2nd value in the tuple,
@@ -1101,17 +1143,11 @@ mod tests {
         );
         assert_eq!(
             tree.get_interval_difference((Included(20), Included(45))),
-            vec![
-                (Included(20), Excluded(30)),
-                (Excluded(40), Included(45))
-            ]
+            vec![(Included(20), Excluded(30)), (Excluded(40), Included(45))]
         );
         assert_eq!(
             tree.get_interval_difference((Included(20), Excluded(45))),
-            vec![
-                (Included(20), Excluded(30)),
-                (Excluded(40), Excluded(45))
-            ]
+            vec![(Included(20), Excluded(30)), (Excluded(40), Excluded(45))]
         );
         assert_eq!(
             tree.get_interval_difference((Included(2), Included(10))),
@@ -1205,7 +1241,7 @@ mod tests {
 
     #[test]
     fn remove_random_leaf_empty_tree_works_as_expected() {
-        let mut tree : IntervalTree<i32> = IntervalTree::default();
+        let mut tree: IntervalTree<i32> = IntervalTree::default();
 
         assert_eq!(tree.remove_random_leaf(), None);
     }
@@ -1270,7 +1306,6 @@ mod tests {
         tree_deleted_key6.insert(key4_deleted6.clone());
         tree_deleted_key6.insert(key5_deleted6.clone());
 
-
         use std::collections::HashSet;
         let mut all_deleted = HashSet::new();
         let num_of_leaves = 2; // Key5 & Key6
@@ -1294,7 +1329,7 @@ mod tests {
                 unreachable!();
             }
 
-            // Keep track of deleted nodes, and reinsert the 
+            // Keep track of deleted nodes, and reinsert the
             // deleted node in the tree so we come back to
             // the initial state every iteration.
             all_deleted.insert(deleted.clone());
