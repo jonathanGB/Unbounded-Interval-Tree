@@ -21,6 +21,23 @@ use std::ops::RangeBounds;
 type Range<K> = (Bound<K>, Bound<K>);
 
 /// The interval tree storing all the underlying intervals.
+///
+/// There are two main ways of creating an interval tree.
+/// ```
+/// use unbounded_interval_tree::IntervalTree;
+///
+/// // 1. Create an empty default interval tree.
+/// let mut interval_tree = IntervalTree::default();
+/// assert!(interval_tree.is_empty());
+/// interval_tree.insert(0..9);
+/// interval_tree.insert(27..);
+/// assert_eq!(interval_tree.len(), 2);
+///
+/// // 2. Create an interval tree from an iterator.
+/// let ranges = vec!["hello"..="hi", "Allo"..="Bonjour"];
+/// let interval_tree = ranges.into_iter().collect::<IntervalTree<_>>();
+/// assert_eq!(interval_tree.len(), 2);
+/// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct IntervalTree<K: Ord> {
     root: Option<Box<Node<K>>>,
@@ -54,6 +71,24 @@ where
             root: None,
             size: 0,
         }
+    }
+}
+
+/// Creates an [`IntervalTree`] from an iterator of elements
+/// satisfying the [`RangeBounds`] trait.
+impl<K, R> FromIterator<R> for IntervalTree<K>
+where
+    K: Ord + Clone,
+    R: RangeBounds<K>,
+{
+    fn from_iter<T: IntoIterator<Item = R>>(iter: T) -> Self {
+        let mut interval_tree = Self::default();
+
+        for interval in iter {
+            interval_tree.insert(interval);
+        }
+
+        interval_tree
     }
 }
 
@@ -971,6 +1006,14 @@ mod tests {
         assert_eq!(tree.root.as_ref().unwrap().value, key.1);
         assert!(tree.root.as_ref().unwrap().left.is_none());
         assert!(tree.root.as_ref().unwrap().right.is_none());
+    }
+
+    #[test]
+    fn creates_from_iterator() {
+        let ranges = vec![0..5, 6..10, 10..15];
+        let interval_tree: IntervalTree<_> = ranges.into_iter().collect();
+
+        assert_eq!(interval_tree.len(), 3);
     }
 
     #[test]
