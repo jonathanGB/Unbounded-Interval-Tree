@@ -6,6 +6,7 @@ A Rust implementation of an interval tree, based on the one described by Cormen 
 * [-2.3, 18.81) <- inclusive/exclusive floats
 * ("abc", "hi"] <- exclusive/inclusive strings
 * (-inf, November 7 2019] <- unbounded/inclusive dates
+* [(1, 5), (2, 9)] <- inclusive/inclusive tuples of integers
 
 ## How To Use
 
@@ -34,13 +35,11 @@ for (start, end) in tree.iter() {
 }
 
 // Get overlapping intervals.
-let overlaps = tree.get_interval_overlaps(
-  &(Included(0), Excluded(30)));
+let overlaps = tree.get_interval_overlaps(&(0..30));
 
 // Get the difference between the database
 // of intervals and the query interval.
-let diff = tree.get_interval_difference(
-  (Included(0), Excluded(30)));
+let diff = tree.get_interval_difference(&(0..=30));
 ```
 
 ## Roadmap

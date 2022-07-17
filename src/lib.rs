@@ -6,32 +6,36 @@
 //! in the tree of intervals?"), as well as helpers to get the difference between a queried
 //! interval and the database (in order to find subsegments not covered), and the list of
 //! intervals in the database overlapping a queried interval.
+//!
+//! Note that any type satisfying the [`Ord`] trait can be stored in this tree.
 
+use std::borrow::Borrow;
 use std::cmp::Ordering;
 use std::cmp::Ordering::*;
 use std::fmt;
 use std::mem;
 use std::ops::Bound;
 use std::ops::Bound::*;
+use std::ops::RangeBounds;
 
 type Range<K> = (Bound<K>, Bound<K>);
 
 /// The interval tree storing all the underlying intervals.
 #[derive(Clone, Debug, PartialEq)]
-pub struct IntervalTree<K: Ord + Clone> {
+pub struct IntervalTree<K: Ord> {
     root: Option<Box<Node<K>>>,
     size: usize,
 }
 
 /// An inorder interator through the interval tree.
-pub struct IntervalTreeIter<'a, K: Ord + Clone> {
+pub struct IntervalTreeIter<'a, K: Ord> {
     to_visit: Vec<&'a Box<Node<K>>>,
     curr: &'a Option<Box<Node<K>>>,
 }
 
 impl<K> fmt::Display for IntervalTree<K>
 where
-    K: Ord + Clone + fmt::Display,
+    K: Ord + fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.root {
@@ -43,7 +47,7 @@ where
 
 impl<K> Default for IntervalTree<K>
 where
-    K: Ord + Clone,
+    K: Ord,
 {
     fn default() -> IntervalTree<K> {
         IntervalTree {
@@ -55,7 +59,7 @@ where
 
 impl<K> IntervalTree<K>
 where
-    K: Ord + Clone,
+    K: Ord,
 {
     /// Produces an inorder iterator for the interval tree.
     ///
@@ -84,7 +88,10 @@ where
     }
 
     /// Inserts an interval `range` into the interval tree. Insertions respect the
-    /// binary search properties of this tree. An improvement to come is to rebalance
+    /// binary search properties of this tree.
+    /// It is ok to insert a `range` that overlaps with an existing interval in the tree.
+    ///
+    ///  An improvement to come is to rebalance
     /// the tree (following an AVL or a red-black scheme).
     ///
     /// # Examples
@@ -101,7 +108,10 @@ where
     ///
     /// str_tree.insert((Included("Noria"), Unbounded));
     /// ```
-    pub fn insert(&mut self, range: Range<K>) {
+    pub fn insert(&mut self, range: Range<K>)
+    where
+        K: Clone,
+    {
         self.size += 1;
 
         // If the tree is empty, put new node at the root.
@@ -140,8 +150,10 @@ where
         }
     }
 
-    /// A "stabbing query" in the jargon: returns whether or not a point `q`
+    /// A "stabbing query" in the jargon: returns whether or not a point `p`
     /// is contained in any of the intervals stored in the tree.
+    ///
+    /// The given point may be of a borrowed form of the stored type `K`.
     ///
     /// # Examples
     ///
@@ -152,11 +164,11 @@ where
     ///
     /// int_tree.insert((Excluded(5), Unbounded));
     ///
-    /// assert!(int_tree.contains_point(100));
-    /// assert!(!int_tree.contains_point(5));
+    /// assert!(int_tree.contains_point(&100));
+    /// assert!(!int_tree.contains_point(&5));
     /// ```
     ///
-    /// Note that we can work with any type that implements the `Ord+Clone` traits, so
+    /// Note that we can work with any type that implements the [`Ord`] trait, so
     /// we are not limited to just integers.
     ///
     /// ```
@@ -164,17 +176,25 @@ where
     ///
     /// let mut str_tree = unbounded_interval_tree::IntervalTree::default();
     ///
-    /// str_tree.insert((Excluded("Noria"), Unbounded));
+    /// str_tree.insert((Excluded(String::from("Noria")), Unbounded));
     ///
-    /// assert!(str_tree.contains_point(&"Zebra"));
-    /// assert!(!str_tree.contains_point(&"Noria"));
+    /// // Borrowed form (`str`) of `String`.
+    /// assert!(!str_tree.contains_point("Noria"));
+    /// // Also works with non-borrowed form.
+    /// assert!(str_tree.contains_point(&String::from("Zebra")));
     /// ```
-    pub fn contains_point(&self, q: K) -> bool {
-        self.contains_interval((Included(q.clone()), Included(q.clone())))
+    pub fn contains_point<Q>(&self, p: &Q) -> bool
+    where
+        K: Ord + Borrow<Q>,
+        Q: Ord + ?Sized,
+    {
+        self.contains_interval(&(Included(p), Included(p)))
     }
 
-    /// An alternative "stabbing query": returns whether or not an interval `q`
+    /// An alternative "stabbing query": returns whether or not an interval `range`
     /// is fully covered by the intervals stored in the tree.
+    ///
+    /// The given `range` may have bounds that are of a borrowed form of the stored type `K`.
     ///
     /// # Examples
     ///
@@ -186,15 +206,41 @@ where
     /// tree.insert((Included(20), Included(30)));
     /// tree.insert((Excluded(30), Excluded(50)));
     ///
-    /// assert!(tree.contains_interval((Included(20), Included(40))));
-    /// assert!(!tree.contains_interval((Included(30), Included(50))));
+    /// assert!(tree.contains_interval(&(20..=40)));
+    /// // Borrowed form of the key works as well.
+    /// assert!(!tree.contains_interval(&(&30..=&50)));
     /// ```
-    pub fn contains_interval(&self, q: Range<K>) -> bool {
-        self.get_interval_difference(q).is_empty()
+    ///
+    /// Again, the given `range` can be any type implementing [`Ord`].
+    ///
+    /// ```
+    /// use std::ops::Bound::{Included, Excluded, Unbounded};
+    /// let mut tree = unbounded_interval_tree::IntervalTree::default();
+    ///
+    /// let key1 = (Included("a"), Excluded("h"));
+    /// let key2 = (Excluded("M"), Excluded("O"));
+    ///
+    /// tree.insert(key1.clone());
+    /// tree.insert(key2);
+    ///
+    /// assert!(tree.contains_interval(&("a".."h")));
+    /// assert!(!tree.contains_interval(&("N"..="O")));
+    /// // Sometimes, we have to disambiguate the key type.
+    /// assert!(tree.contains_interval::<&str, _>(&key1));
+    /// ```
+    pub fn contains_interval<Q, R>(&self, range: &R) -> bool
+    where
+        K: Ord + Borrow<Q>,
+        R: RangeBounds<Q>,
+        Q: Ord + ?Sized,
+    {
+        self.get_interval_difference(range).is_empty()
     }
 
-    /// Returns the inorder list of all intervals stored in the tree that overlaps
-    /// with a given range `q` (partially or completely).
+    /// Returns the inorder list of all references to intervals stored in the tree that overlaps
+    /// with the given `range` (partially or completely).
+    ///
+    /// The given `range` may have bounds that are of a borrowed form of the stored type `K`.
     ///
     /// # Examples
     ///
@@ -206,21 +252,34 @@ where
     /// tree.insert((Included(0), Included(5)));
     /// tree.insert((Included(7), Excluded(10)));
     ///
-    /// assert_eq!(tree.get_interval_overlaps(&(Included(-5), Excluded(7))),
+    /// assert_eq!(tree.get_interval_overlaps(&(-5..7)),
     ///            vec![&(Included(0), Included(5))]);
-    /// assert!(tree.get_interval_overlaps(&(Included(10), Unbounded)).is_empty());
+    /// // Borrowed form of the key works as well.
+    /// assert!(tree.get_interval_overlaps(&(&10..)).is_empty());
     /// ```
-    pub fn get_interval_overlaps(&self, q: &Range<K>) -> Vec<&Range<K>> {
+    pub fn get_interval_overlaps<Q, R>(&self, range: &R) -> Vec<&Range<K>>
+    where
+        K: Ord + Borrow<Q>,
+        R: RangeBounds<Q>,
+        Q: Ord + ?Sized,
+    {
         let curr = &self.root;
         let mut acc = Vec::new();
 
-        Self::get_interval_overlaps_rec(curr, q, &mut acc);
+        Self::get_interval_overlaps_rec(curr, range, &mut acc);
         acc
     }
 
-    /// Returns the ordered list of subintervals in `q` that are not covered by the tree.
-    /// This is useful to compute what subsegments of `q` that are not covered by the intervals
+    /// Returns the ordered list of subintervals in `range` that are not covered by the tree.
+    /// This is useful to compute what subsegments of `range` that are not covered by the intervals
     /// stored in the tree.
+    ///
+    /// If `range` is not covered at all, this simply returns a one element vector
+    /// containing the bounds of `range`.
+    ///
+    /// The given `range` may have bounds that are of a borrowed form of the stored type `K`.
+    /// Because all the bounds returned are either from the interval tree of from the `range`, we return
+    /// references to these bounds rather than clone them.
     ///
     /// # Examples
     ///
@@ -233,24 +292,29 @@ where
     /// tree.insert((Excluded(10), Included(30)));
     /// tree.insert((Excluded(50), Unbounded));
     ///
-    /// assert_eq!(tree.get_interval_difference((Included(-5), Included(30))),
-    ///            vec![(Included(-5), Excluded(0)),
-    ///                 (Included(10), Included(10))]);
-    /// assert_eq!(tree.get_interval_difference((Unbounded, Excluded(10))),
-    ///            vec![(Unbounded, Excluded(0))]);
-    /// assert!(tree.get_interval_difference((Included(100), Unbounded)).is_empty());
+    /// assert_eq!(tree.get_interval_difference(&(-5..=30)),
+    ///            vec![(Included(&-5), Excluded(&0)),
+    ///                 (Included(&10), Included(&10))]);
+    /// assert_eq!(tree.get_interval_difference(&(..10)),
+    ///            vec![(Unbounded, Excluded(&0))]);
+    /// assert!(tree.get_interval_difference(&(100..)).is_empty());
     /// ```
-    pub fn get_interval_difference(&self, q: Range<K>) -> Vec<Range<K>> {
-        let overlaps = self.get_interval_overlaps(&q);
+    pub fn get_interval_difference<'a, Q, R>(&'a self, range: &'a R) -> Vec<Range<&'a Q>>
+    where
+        K: Ord + Borrow<Q>,
+        R: RangeBounds<Q>,
+        Q: Ord + ?Sized,
+    {
+        let overlaps = self.get_interval_overlaps(range);
 
         // If there is no overlap, then the difference is the query `q` itself.
         if overlaps.is_empty() {
-            let min = match q.0 {
+            let min = match range.start_bound() {
                 Included(x) => Included(x),
                 Excluded(x) => Excluded(x),
                 Unbounded => Unbounded,
             };
-            let max = match q.1 {
+            let max = match range.end_bound() {
                 Included(x) => Included(x),
                 Excluded(x) => Excluded(x),
                 Unbounded => Unbounded,
@@ -259,23 +323,23 @@ where
         }
 
         let mut acc = Vec::new();
-        let first = &overlaps.first().unwrap();
+        let first = overlaps.first().unwrap();
 
         // If q.min < first.min, we have a difference to append.
-        match (&q.0, &first.0) {
-            (Unbounded, Included(first_min)) => acc.push((Unbounded, Excluded(first_min.clone()))),
-            (Unbounded, Excluded(first_min)) => acc.push((Unbounded, Included(first_min.clone()))),
-            (Included(q_min), Included(first_min)) if q_min < first_min => {
-                acc.push((Included(q_min.clone()), Excluded(first_min.clone())))
+        match (range.start_bound(), first.start_bound()) {
+            (Unbounded, Included(first_min)) => acc.push((Unbounded, Excluded(first_min.borrow()))),
+            (Unbounded, Excluded(first_min)) => acc.push((Unbounded, Included(first_min.borrow()))),
+            (Included(q_min), Included(first_min)) if q_min < first_min.borrow() => {
+                acc.push((Included(q_min), Excluded(first_min.borrow())))
             }
-            (Excluded(q_min), Included(first_min)) if q_min < first_min => {
-                acc.push((Excluded(q_min.clone()), Excluded(first_min.clone())))
+            (Excluded(q_min), Included(first_min)) if q_min < first_min.borrow() => {
+                acc.push((Excluded(q_min), Excluded(first_min.borrow())))
             }
-            (Excluded(q_min), Excluded(first_min)) if q_min < first_min => {
-                acc.push((Excluded(q_min.clone()), Included(first_min.clone())))
+            (Excluded(q_min), Excluded(first_min)) if q_min < first_min.borrow() => {
+                acc.push((Excluded(q_min), Included(first_min.borrow())))
             }
-            (Included(q_min), Excluded(first_min)) if q_min <= first_min => {
-                acc.push((Included(q_min.clone()), Included(first_min.clone())))
+            (Included(q_min), Excluded(first_min)) if q_min <= first_min.borrow() => {
+                acc.push((Included(q_min), Included(first_min.borrow())))
             }
             _ => {}
         };
@@ -299,8 +363,8 @@ where
                     if contiguous_max < overlap_min =>
                 {
                     acc.push((
-                        Excluded(contiguous_max.clone()),
-                        Excluded(overlap_min.clone()),
+                        Excluded(contiguous_max.borrow()),
+                        Excluded(overlap_min.borrow()),
                     ));
                     contiguous = &overlap.1;
                 }
@@ -308,8 +372,8 @@ where
                     if contiguous_max < overlap_min =>
                 {
                     acc.push((
-                        Excluded(contiguous_max.clone()),
-                        Included(overlap_min.clone()),
+                        Excluded(contiguous_max.borrow()),
+                        Included(overlap_min.borrow()),
                     ));
                     contiguous = &overlap.1;
                 }
@@ -317,8 +381,8 @@ where
                     if contiguous_max < overlap_min =>
                 {
                     acc.push((
-                        Included(contiguous_max.clone()),
-                        Excluded(overlap_min.clone()),
+                        Included(contiguous_max.borrow()),
+                        Excluded(overlap_min.borrow()),
                     ));
                     contiguous = &overlap.1;
                 }
@@ -326,8 +390,8 @@ where
                     if contiguous_max <= overlap_min =>
                 {
                     acc.push((
-                        Included(contiguous_max.clone()),
-                        Included(overlap_min.clone()),
+                        Included(contiguous_max.borrow()),
+                        Included(overlap_min.borrow()),
                     ));
                     contiguous = &overlap.1;
                 }
@@ -354,18 +418,18 @@ where
         }
 
         // If contiguous.max < q.max, we have a difference to append.
-        match (&contiguous, &q.1) {
-            (Included(contiguous_max), Included(q_max)) if contiguous_max < q_max => {
-                acc.push((Excluded(contiguous_max.clone()), Included(q_max.clone())))
+        match (&contiguous, range.end_bound()) {
+            (Included(contiguous_max), Included(q_max)) if contiguous_max.borrow() < q_max => {
+                acc.push((Excluded(contiguous_max.borrow()), Included(q_max)))
             }
-            (Included(contiguous_max), Excluded(q_max)) if contiguous_max < q_max => {
-                acc.push((Excluded(contiguous_max.clone()), Excluded(q_max.clone())))
+            (Included(contiguous_max), Excluded(q_max)) if contiguous_max.borrow() < q_max => {
+                acc.push((Excluded(contiguous_max.borrow()), Excluded(q_max)))
             }
-            (Excluded(contiguous_max), Excluded(q_max)) if contiguous_max < q_max => {
-                acc.push((Included(contiguous_max.clone()), Excluded(q_max.clone())))
+            (Excluded(contiguous_max), Excluded(q_max)) if contiguous_max.borrow() < q_max => {
+                acc.push((Included(contiguous_max.borrow()), Excluded(q_max)))
             }
-            (Excluded(contiguous_max), Included(q_max)) if contiguous_max <= q_max => {
-                acc.push((Included(contiguous_max.clone()), Included(q_max.clone())))
+            (Excluded(contiguous_max), Included(q_max)) if contiguous_max.borrow() <= q_max => {
+                acc.push((Included(contiguous_max.borrow()), Included(q_max)))
             }
             _ => {}
         };
@@ -373,11 +437,15 @@ where
         acc
     }
 
-    fn get_interval_overlaps_rec<'a>(
+    fn get_interval_overlaps_rec<'a, Q, R>(
         curr: &'a Option<Box<Node<K>>>,
-        q: &Range<K>,
+        range: &R,
         acc: &mut Vec<&'a Range<K>>,
-    ) {
+    ) where
+        K: Ord + Borrow<Q>,
+        R: RangeBounds<Q>,
+        Q: Ord + ?Sized,
+    {
         // If we reach None, stop recursing along this subtree.
         let node = match curr {
             None => return,
@@ -396,11 +464,11 @@ where
         //  * subtree.max: Excluded(x) / q.min: Included(x) -> <, condition satisfied
         //  * subtree.max: Excluded(x) / q.min: Excluded(x) -> <, condition satisfied
         let max_subtree = match &node.value {
-            Included(x) => Some((x, 2)),
-            Excluded(x) => Some((x, 1)),
+            Included(x) => Some((x.borrow(), 2)),
+            Excluded(x) => Some((x.borrow(), 1)),
             Unbounded => None,
         };
-        let min_q = match &q.0 {
+        let min_q = match range.start_bound() {
             Included(x) => Some((x, 2)),
             Excluded(x) => Some((x, 3)),
             Unbounded => None,
@@ -411,7 +479,7 @@ where
         };
 
         // Search left subtree.
-        Self::get_interval_overlaps_rec(&node.left, q, acc);
+        Self::get_interval_overlaps_rec(&node.left, range, acc);
 
         // Visit this node.
         // If node.min <= q.max AND node.max >= q.min, we have an intersection.
@@ -433,11 +501,11 @@ where
         // the previous first condition. Hence, we decided to add an early return
         // in there, rather than repeat the logic afterwards.
         let min_node = match &node.key.0 {
-            Included(x) => Some((x, 2)),
-            Excluded(x) => Some((x, 3)),
+            Included(x) => Some((x.borrow(), 2)),
+            Excluded(x) => Some((x.borrow(), 3)),
             Unbounded => None,
         };
-        let max_q = match &q.1 {
+        let max_q = match range.end_bound() {
             Included(x) => Some((x, 2)),
             Excluded(x) => Some((x, 1)),
             Unbounded => None,
@@ -457,8 +525,8 @@ where
                 //  * node.max: Excluded(x) / q.min: Included(x) -> <, 2nd inequality not satisfied
                 //  * node.max: Excluded(x) / q.min: Excluded(x) -> <, 2nd inequality not satisfied
                 let max_node = match &node.key.1 {
-                    Included(x) => Some((x, 2)),
-                    Excluded(x) => Some((x, 1)),
+                    Included(x) => Some((x.borrow(), 2)),
+                    Excluded(x) => Some((x.borrow(), 1)),
                     Unbounded => None,
                 };
 
@@ -470,11 +538,12 @@ where
         };
 
         // Search right subtree.
-        Self::get_interval_overlaps_rec(&node.right, q, acc);
+        Self::get_interval_overlaps_rec(&node.right, range, acc);
     }
 
     /// Removes a random leaf from the tree,
     /// and returns the range stored in the said node.
+    ///
     /// The returned value will be `None` if the tree is empty.
     ///
     /// # Examples
@@ -487,22 +556,25 @@ where
     /// tree.insert((Included(5), Excluded(9)));
     /// tree.insert((Unbounded, Included(10)));
     ///
-    /// assert!(tree.contains_point(10));
-    /// assert!(tree.contains_point(6));
+    /// assert!(tree.contains_point(&10));
+    /// assert!(tree.contains_point(&6));
     ///
     /// let deleted = tree.remove_random_leaf();
     /// assert!(deleted.is_some());
-    /// assert!(!tree.contains_point(10));
-    /// assert!(tree.contains_point(6));
+    /// assert!(!tree.contains_point(&10));
+    /// assert!(tree.contains_point(&6));
     ///
     /// let deleted = tree.remove_random_leaf();
     /// assert!(deleted.is_some());
-    /// assert!(!tree.contains_point(6));
+    /// assert!(!tree.contains_point(&6));
     ///
     /// let deleted = tree.remove_random_leaf();
     /// assert!(deleted.is_none());
     /// ```
-    pub fn remove_random_leaf(&mut self) -> Option<Range<K>> {
+    pub fn remove_random_leaf(&mut self) -> Option<Range<K>>
+    where
+        K: Clone,
+    {
         use rand::random;
 
         // If interval tree is empty, just return None.
@@ -753,7 +825,7 @@ where
 
 impl<'a, K> Iterator for IntervalTreeIter<'a, K>
 where
-    K: Ord + Clone,
+    K: Ord,
 {
     type Item = &'a Range<K>;
 
@@ -774,7 +846,7 @@ where
 }
 
 #[derive(Clone, Debug, PartialEq)]
-struct Node<K: Ord + Clone> {
+struct Node<K: Ord> {
     key: Range<K>,
     value: Bound<K>, // Max end-point.
     left: Option<Box<Node<K>>>,
@@ -783,7 +855,7 @@ struct Node<K: Ord + Clone> {
 
 impl<K> fmt::Display for Node<K>
 where
-    K: Ord + Clone + fmt::Display,
+    K: Ord + fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let start = match self.key.0 {
@@ -1027,13 +1099,10 @@ mod tests {
 
         tree.insert(left_left_key.clone());
         assert_eq!(
-            tree.get_interval_overlaps(&(Unbounded, Unbounded)),
+            tree.get_interval_overlaps(&(..)),
             vec![&left_left_key, &left_key, &root_key]
         );
-        assert_eq!(
-            tree.get_interval_overlaps(&(Included(100), Unbounded)),
-            Vec::<&Range<i32>>::new()
-        );
+        assert!(tree.get_interval_overlaps(&(100..)).is_empty());
 
         tree.insert(right_key);
         assert_eq!(
@@ -1041,15 +1110,12 @@ mod tests {
             vec![&left_left_key, &root_key]
         );
         assert_eq!(
-            tree.get_interval_overlaps(&(Unbounded, Unbounded)),
+            tree.get_interval_overlaps(&(..)),
             vec![&left_left_key, &left_key, &root_key, &right_key]
         );
+        assert_eq!(tree.get_interval_overlaps(&(100..)), vec![&right_key]);
         assert_eq!(
-            tree.get_interval_overlaps(&(Included(100), Unbounded)),
-            vec![&right_key]
-        );
-        assert_eq!(
-            tree.get_interval_overlaps(&(Included(3), Excluded(10))),
+            tree.get_interval_overlaps(&(3..10)),
             vec![&left_left_key, &root_key, &right_key]
         );
         assert_eq!(
@@ -1057,15 +1123,15 @@ mod tests {
             vec![&left_left_key, &right_key]
         );
         assert_eq!(
-            tree.get_interval_overlaps(&(Unbounded, Excluded(2))),
+            tree.get_interval_overlaps(&(..2)),
             vec![&left_left_key, &left_key]
         );
         assert_eq!(
-            tree.get_interval_overlaps(&(Unbounded, Included(2))),
+            tree.get_interval_overlaps(&(..=2)),
             vec![&left_left_key, &left_key, &root_key]
         );
         assert_eq!(
-            tree.get_interval_overlaps(&(Unbounded, Included(3))),
+            tree.get_interval_overlaps(&(..=3)),
             vec![&left_left_key, &left_key, &root_key]
         );
     }
@@ -1080,18 +1146,16 @@ mod tests {
         tree.insert(root_key.clone());
         tree.insert(right_key.clone());
 
-        assert!(tree
-            .get_interval_overlaps(&(Included((2, 0)), Included((2, 30))))
-            .is_empty());
+        assert!(tree.get_interval_overlaps(&((2, 0)..=(2, 30))).is_empty());
         assert_eq!(
-            tree.get_interval_overlaps(&(Included((1, 3)), Included((1, 5)))),
+            tree.get_interval_overlaps(&((1, 3)..=(1, 5))),
             vec![&root_key]
         );
         assert_eq!(
-            tree.get_interval_difference((Excluded((1, 1)), Included((1, 5)))),
+            tree.get_interval_difference(&(Excluded((1, 1)), Included((1, 5)))),
             vec![
-                (Excluded((1, 1)), Excluded((1, 2))),
-                (Included((1, 4)), Included((1, 5)))
+                (Excluded(&(1, 1)), Excluded(&(1, 2))),
+                (Included(&(1, 4)), Included(&(1, 5)))
             ]
         );
     }
@@ -1119,33 +1183,39 @@ mod tests {
         tree.insert(key8);
 
         assert_eq!(
-            tree.get_interval_difference((Excluded(0), Included(100))),
+            tree.get_interval_difference(&(Excluded(0), Included(100))),
             vec![
-                (Excluded(0), Excluded(2)),
-                (Included(10), Included(10)),
-                (Included(20), Excluded(30)),
-                (Excluded(40), Included(45))
+                (Excluded(&0), Excluded(&2)),
+                (Included(&10), Included(&10)),
+                (Included(&20), Excluded(&30)),
+                (Excluded(&40), Included(&45))
             ]
         );
         assert_eq!(
-            tree.get_interval_difference((Included(19), Included(40))),
-            vec![(Included(20), Excluded(30))]
+            tree.get_interval_difference(&(19..=40)),
+            vec![(Included(&20), Excluded(&30))]
         );
         assert_eq!(
-            tree.get_interval_difference((Included(20), Included(40))),
-            vec![(Included(20), Excluded(30))]
+            tree.get_interval_difference(&(20..=40)),
+            vec![(Included(&20), Excluded(&30))]
         );
         assert_eq!(
-            tree.get_interval_difference((Included(20), Included(45))),
-            vec![(Included(20), Excluded(30)), (Excluded(40), Included(45))]
+            tree.get_interval_difference(&(20..=45)),
+            vec![
+                (Included(&20), Excluded(&30)),
+                (Excluded(&40), Included(&45))
+            ]
         );
         assert_eq!(
-            tree.get_interval_difference((Included(20), Excluded(45))),
-            vec![(Included(20), Excluded(30)), (Excluded(40), Excluded(45))]
+            tree.get_interval_difference(&(20..45)),
+            vec![
+                (Included(&20), Excluded(&30)),
+                (Excluded(&40), Excluded(&45))
+            ]
         );
         assert_eq!(
-            tree.get_interval_difference((Included(2), Included(10))),
-            vec![(Included(10), Included(10))]
+            tree.get_interval_difference(&(2..=10)),
+            vec![(Included(&10), Included(&10))]
         );
     }
 
@@ -1160,12 +1230,41 @@ mod tests {
         tree.insert(key2);
 
         assert_eq!(
-            tree.get_interval_difference((Included(0), Included(40))),
+            tree.get_interval_difference(&(0..=40)),
             vec![
-                (Included(0), Excluded(10)),
-                (Included(20), Included(30)),
-                (Included(40), Included(40))
+                (Included(&0), Excluded(&10)),
+                (Included(&20), Included(&30)),
+                (Included(&40), Included(&40))
             ]
+        );
+    }
+
+    #[test]
+    fn get_interval_difference_str_works_as_expected() {
+        let mut tree = IntervalTree::default();
+
+        let key1 = (Included("a"), Excluded("h"));
+        let key2 = (Excluded("M"), Excluded("O"));
+
+        tree.insert(key1.clone());
+        tree.insert(key2);
+
+        assert!(tree.get_interval_difference(&("a".."h")).is_empty());
+        assert_eq!(
+            tree.get_interval_difference(&("M"..="P")),
+            vec![
+                (Included(&"M"), Included(&"M")),
+                (Included(&"O"), Included(&"P"))
+            ]
+        );
+
+        let not_covered_range = "h".."k";
+        assert_eq!(
+            tree.get_interval_difference(&not_covered_range),
+            vec![(
+                not_covered_range.start_bound(),
+                not_covered_range.end_bound()
+            )]
         );
     }
 
@@ -1181,10 +1280,42 @@ mod tests {
         tree.insert(key2);
         tree.insert(key3);
 
-        assert!(tree.contains_point(10));
-        assert!(!tree.contains_point(20));
-        assert!(tree.contains_point(40));
-        assert!(tree.contains_point(100));
+        assert!(tree.contains_point(&10));
+        assert!(!tree.contains_point(&20));
+        assert!(tree.contains_point(&40));
+        assert!(tree.contains_point(&100));
+    }
+
+    #[test]
+    fn contains_string_point_works_as_expected() {
+        let mut tree = IntervalTree::default();
+
+        let key1 = (Included(String::from("a")), Excluded(String::from("h")));
+        let key2 = (Excluded(String::from("M")), Excluded(String::from("O")));
+
+        tree.insert(key1);
+        tree.insert(key2);
+
+        assert!(tree.contains_point("b"));
+        assert!(!tree.contains_point("n"));
+        assert!(tree.contains_point(&String::from("N")));
+        assert!(tree.contains_point("g"));
+    }
+
+    #[test]
+    fn contains_str_point_works_as_expected() {
+        let mut tree = IntervalTree::default();
+
+        let key1 = (Included("a"), Excluded("h"));
+        let key2 = (Excluded("M"), Excluded("O"));
+
+        tree.insert(key1);
+        tree.insert(key2);
+
+        assert!(tree.contains_point("b"));
+        assert!(!tree.contains_point("n"));
+        assert!(tree.contains_point(&"N"));
+        assert!(tree.contains_point("g"));
     }
 
     #[test]
@@ -1199,10 +1330,26 @@ mod tests {
         tree.insert(key2.clone());
         tree.insert(key3.clone());
 
-        assert!(tree.contains_interval(key1));
-        assert!(!tree.contains_interval((Included(10), Included(20))));
-        assert!(!tree.contains_interval((Unbounded, Included(0))));
-        assert!(tree.contains_interval((Included(35), Included(37))));
+        assert!(tree.contains_interval(&key1));
+        assert!(!tree.contains_interval(&(Included(&10), Included(&20))));
+        assert!(!tree.contains_interval(&(..=0)));
+        assert!(tree.contains_interval(&(Included(35), Included(37))));
+    }
+
+    #[test]
+    fn contains_str_works_as_expected() {
+        let mut tree = IntervalTree::default();
+
+        let key1 = (Included("a"), Excluded("h"));
+        let key2 = (Excluded("M"), Excluded("O"));
+
+        tree.insert(key1.clone());
+        tree.insert(key2);
+
+        assert!(tree.contains_interval(&("a".."h")));
+        assert!(tree.contains_interval(&("N"..="N")));
+        assert!(tree.contains_interval::<&str, _>(&key1));
+        assert!(!tree.contains_interval(&("N"..="O")));
     }
 
     #[test]
