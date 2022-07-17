@@ -516,7 +516,7 @@ where
 
         // If we only have one node, delete it right away.
         if curr.left.is_none() && curr.right.is_none() {
-            let root = mem::replace(&mut self.root, None).unwrap();
+            let root = mem::take(&mut self.root).unwrap();
             return Some(root.key);
         }
 
@@ -579,7 +579,7 @@ where
                     let next = curr.left.as_ref().unwrap();
                     if next.is_leaf() {
                         curr.value = max_other.clone();
-                        break (mem::replace(&mut curr.left, None).unwrap(), max_other);
+                        break (mem::take(&mut curr.left).unwrap(), max_other);
                     }
 
                     // If the next node is *not* a leaf, then we can update the visited path
@@ -601,7 +601,7 @@ where
                     let next = curr.right.as_ref().unwrap();
                     if next.is_leaf() {
                         curr.value = max_other.clone();
-                        break (mem::replace(&mut curr.right, None).unwrap(), max_other);
+                        break (mem::take(&mut curr.right).unwrap(), max_other);
                     }
 
                     path.push((&mut curr.value, max_other));
@@ -683,7 +683,7 @@ where
     /// assert!(tree.is_empty());
     /// ```
     pub fn clear(&mut self) {
-        mem::replace(&mut self.root, None);
+        self.root = None;
         self.size = 0;
     }
 }
