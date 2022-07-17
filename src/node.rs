@@ -5,7 +5,7 @@ use std::ops::Bound::*;
 pub(crate) type Range<K> = (Bound<K>, Bound<K>);
 
 #[derive(Clone, Debug, PartialEq)]
-pub(crate) struct Node<K: Ord> {
+pub(crate) struct Node<K> {
     pub key: Range<K>,
     pub value: Bound<K>, // Max end-point.
     pub left: Option<Box<Node<K>>>,
@@ -14,7 +14,7 @@ pub(crate) struct Node<K: Ord> {
 
 impl<K> fmt::Display for Node<K>
 where
-    K: Ord + fmt::Display,
+    K: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let start = match self.key.0 {
@@ -67,11 +67,11 @@ where
     }
 }
 
-impl<K> Node<K>
-where
-    K: Ord + Clone,
-{
-    pub fn new(range: Range<K>) -> Node<K> {
+impl<K> Node<K> {
+    pub fn new(range: Range<K>) -> Node<K>
+    where
+        K: Clone,
+    {
         let max = range.1.clone();
 
         Node {
@@ -86,7 +86,10 @@ where
         self.left.is_none() && self.right.is_none()
     }
 
-    pub fn maybe_update_value(&mut self, inserted_max: &Bound<K>) {
+    pub fn maybe_update_value(&mut self, inserted_max: &Bound<K>)
+    where
+        K: PartialOrd + Clone,
+    {
         let self_max_q = match &self.value {
             Included(x) => Some((x, 2)),
             Excluded(x) => Some((x, 1)),

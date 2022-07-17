@@ -33,14 +33,14 @@ use std::ops::RangeBounds;
 /// assert_eq!(interval_tree.len(), 2);
 /// ```
 #[derive(Clone, Debug, PartialEq)]
-pub struct IntervalTree<K: Ord> {
+pub struct IntervalTree<K> {
     root: Option<Box<Node<K>>>,
     size: usize,
 }
 
 impl<K> fmt::Display for IntervalTree<K>
 where
-    K: Ord + fmt::Display,
+    K: fmt::Display,
 {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self.root {
@@ -50,10 +50,7 @@ where
     }
 }
 
-impl<K> Default for IntervalTree<K>
-where
-    K: Ord,
-{
+impl<K> Default for IntervalTree<K> {
     fn default() -> IntervalTree<K> {
         IntervalTree {
             root: None,
@@ -96,10 +93,7 @@ where
     }
 }
 
-impl<K> IntervalTree<K>
-where
-    K: Ord,
-{
+impl<K> IntervalTree<K> {
     /// Produces an inorder iterator for the interval tree.
     ///
     /// # Examples
@@ -150,7 +144,7 @@ where
     /// ```
     pub fn insert<R>(&mut self, range: R)
     where
-        K: Clone,
+        K: Ord + Clone,
         R: RangeBounds<K>,
     {
         let range = (range.start_bound().cloned(), range.end_bound().cloned());
@@ -623,7 +617,7 @@ where
     /// ```
     pub fn remove_random_leaf(&mut self) -> Option<Range<K>>
     where
-        K: Clone,
+        K: Ord + Clone,
     {
         use rand::random;
 
@@ -812,7 +806,10 @@ where
         self.size = 0;
     }
 
-    fn cmp(r1: &Range<K>, r2: &Range<K>) -> Ordering {
+    fn cmp(r1: &Range<K>, r2: &Range<K>) -> Ordering
+    where
+        K: Ord,
+    {
         // Sorting by lower bound, then by upper bound.
         //   -> Unbounded is the smallest lower bound.
         //   -> Unbounded is the biggest upper bound.
@@ -852,7 +849,10 @@ where
         Self::cmp_endbound(&r1.1, &r2.1)
     }
 
-    fn cmp_endbound(e1: &Bound<K>, e2: &Bound<K>) -> Ordering {
+    fn cmp_endbound(e1: &Bound<K>, e2: &Bound<K>) -> Ordering
+    where
+        K: Ord,
+    {
         // Based on the encoding idea used in `cmp`.
         // Note that we have inversed the 2nd value in the tuple,
         // as the Included/Excluded rules are flipped for the upper bound.
@@ -877,15 +877,12 @@ where
 }
 
 /// An inorder interator through the interval tree.
-pub struct IntervalTreeIter<'a, K: Ord> {
+pub struct IntervalTreeIter<'a, K> {
     to_visit: Vec<&'a Box<Node<K>>>,
     curr: &'a Option<Box<Node<K>>>,
 }
 
-impl<'a, K> Iterator for IntervalTreeIter<'a, K>
-where
-    K: Ord,
-{
+impl<'a, K> Iterator for IntervalTreeIter<'a, K> {
     type Item = &'a Range<K>;
 
     fn next(&mut self) -> Option<Self::Item> {
