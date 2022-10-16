@@ -1,9 +1,12 @@
 use std::fmt;
 use std::ops::Bound;
 use std::ops::Bound::*;
+#[cfg(feature="serde")]
+use serde::{Serialize, Deserialize};
 
 pub(crate) type Range<K> = (Bound<K>, Bound<K>);
 
+#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Node<K> {
     pub key: Range<K>,

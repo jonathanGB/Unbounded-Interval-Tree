@@ -8,6 +8,8 @@ use std::mem;
 use std::ops::Bound;
 use std::ops::Bound::*;
 use std::ops::RangeBounds;
+#[cfg(feature="serde")]
+use serde::{Serialize, Deserialize};
 
 /// The interval tree storing all the underlying intervals.
 ///
@@ -32,6 +34,7 @@ use std::ops::RangeBounds;
 /// let interval_tree = IntervalTree::from(ranges);
 /// assert_eq!(interval_tree.len(), 2);
 /// ```
+#[cfg_attr(feature="serde", derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq)]
 pub struct IntervalTree<K> {
     root: Option<Box<Node<K>>>,

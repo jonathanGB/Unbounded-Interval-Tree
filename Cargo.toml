@@ -13,3 +13,4 @@ categories = ["algorithms", "data-structures"]
 
 [dependencies]
 rand = "0.8"
+serde = { version = "1.0.145", optional = true , features = ["derive"] }
