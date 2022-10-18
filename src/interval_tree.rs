@@ -951,12 +951,12 @@ mod tests {
 		    ],
 		    "left": null,
 		    "right": null,
-		    "value": {"Excluded": 4},
+		    "value": {"Excluded": 3},
 		},
 		"right": null,
 		"value": {"Included": 4},
 	    },
-	    "size": 1,
+	    "size": 2,
 	});
 	assert_eq!(expected_value, deserialized_tree);
     }
@@ -987,12 +987,12 @@ mod tests {
 		    ],
 		    "left": null,
 		    "right": null,
-		    "value": {"Excluded": 4},
+		    "value": {"Excluded": 3},
 		},
 		"right": null,
 		"value": {"Included": 4},
 	    },
-	    "size": 1,
+	    "size": 2,
 	});
 	let serialized_value = value.to_string();
 	let deserialized_tree = from_str(&serialized_value).unwrap();
