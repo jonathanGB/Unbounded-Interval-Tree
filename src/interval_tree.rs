@@ -933,18 +933,28 @@ mod tests {
 	});
 	assert_eq!(expected_empty_value, deserialized_empty_value);
 
+	tree.insert((Included(2), Included(4)));
 	tree.insert((Included(1), Excluded(3)));
+	
 	let serialized_tree = to_string(&tree).unwrap();
 	let deserialized_tree: Value = from_str(&serialized_tree).unwrap();
 	let expected_value = json!({
 	    "root": {
 		"key": [
-		    {"Included": 1},
-		    {"Excluded": 3},
+		    {"Included": 2},
+		    {"Included": 4},
 		],
-		"left": null,
+		"left": {
+		    "key": [
+			{"Included": 1},
+			{"Excluded": 3},
+		    ],
+		    "left": null,
+		    "right": null,
+		    "value": {"Excluded": 4},
+		},
 		"right": null,
-		"value": {"Excluded": 3},
+		"value": {"Included": 4},
 	    },
 	    "size": 1,
 	});
@@ -962,16 +972,25 @@ mod tests {
 	let deserialized_empty_tree = from_str(&serialized_empty_value).unwrap();
 	assert_eq!(expected_tree, deserialized_empty_tree);
 
+	expected_tree.insert((Included(2), Included(4)));
 	expected_tree.insert((Included(1), Excluded(3)));
 	let value = json!({
 	    "root": {
 		"key": [
-		    {"Included": 1},
-		    {"Excluded": 3},
+		    {"Included": 2},
+		    {"Included": 4},
 		],
-		"left": null,
+		"left": {
+		    "key": [
+			{"Included": 1},
+			{"Excluded": 3},
+		    ],
+		    "left": null,
+		    "right": null,
+		    "value": {"Excluded": 4},
+		},
 		"right": null,
-		"value": {"Excluded": 3},
+		"value": {"Included": 4},
 	    },
 	    "size": 1,
 	});
