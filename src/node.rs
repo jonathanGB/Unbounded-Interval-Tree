@@ -6,106 +6,6 @@ use serde::{Serialize, Deserialize};
 
 pub(crate) type Range<K> = (Bound<K>, Bound<K>);
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json::{Value, from_str, json, to_string};
-    
-    #[test]
-    fn serialize_deserialize_identity() {
-	let leaf = Node::new((Included(1), Excluded(3)));
-	let serialized_leaf = to_string(&leaf).unwrap();
-	let deserialized_leaf = from_str(&serialized_leaf).unwrap();
-	assert_eq!(leaf, deserialized_leaf);
-
-	let mut node = Node::new((Included(2), Included(4)));
-	node.left = Some(Box::new(leaf));
-	let serialized_node = to_string(&node).unwrap();
-	let deserialized_node = from_str(&serialized_node).unwrap();
-	assert_eq!(node, deserialized_node);
-    }
-
-    #[test]
-    fn serialize() {
-	let leaf = Node::new((Included(1), Excluded(3)));
-	let serialized_leaf = to_string(&leaf).unwrap();
-	let deserialized_value: Value = from_str(&serialized_leaf).unwrap();
-	let expected_value = json!({
-	    "key": [
-		{"Included": 1},
-		{"Excluded": 3},
-	    ],
-	    "left": null,
-	    "right": null,
-	    "value": {"Excluded": 3}
-	});
-	assert_eq!(expected_value, deserialized_value);
-
-	let mut node = Node::new((Included(2), Included(4)));
-	node.left = Some(Box::new(leaf));
-	let serialized_node = to_string(&node).unwrap();
-	let deserialized_value: Value = from_str(&serialized_node).unwrap();
-	let expected_value = json!({
-	    "key": [
-		{"Included": 2},
-		{"Included": 4},
-	    ],
-	    "left": {
-		"key": [
-		    {"Included": 1},
-		    {"Excluded": 3},
-		],
-		"left": null,
-		"right": null,
-		"value": {"Excluded": 3},
-	    },
-	    "right": null,
-	    "value": {"Included": 4},
-	});
-	assert_eq!(expected_value, deserialized_value);
-    }
-    
-    #[test]
-    fn deserialize() {
-	let expected_leaf = Node::new((Included(1), Excluded(3)));
-	let value = json!({
-	    "key": [
-		{"Included": 1},
-		{"Excluded": 3},
-	    ],
-	    "left": null,
-	    "right": null,
-	    "value": {"Excluded": 3},
-	});
-	let serialized_value = value.to_string();
-	let deserialized_leaf = from_str(&serialized_value).unwrap();
-	assert_eq!(expected_leaf, deserialized_leaf);
-
-	let mut expected_node = Node::new((Included(2), Included(4)));
-	expected_node.left = Some(Box::new(expected_leaf));
-	let value = json!({
-	    "key": [
-		{"Included": 2},
-		{"Included": 4},
-	    ],
-	    "left": {
-		"key": [
-		    {"Included": 1},
-		    {"Excluded": 3},
-		],
-		"left": null,
-		"right": null,
-		"value": {"Excluded": 3},
-	    },
-	    "right": null,
-	    "value": {"Included": 4},
-	});
-	let serialized_value = value.to_string();
-	let deserialized_node = from_str(&serialized_value).unwrap();
-	assert_eq!(expected_node, deserialized_node);
-    }
-}
-
 #[cfg_attr(any(feature="serde", test), derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Node<K> {
@@ -212,5 +112,105 @@ impl<K> Node<K> {
                 }
             }
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::{Value, from_str, json, to_string};
+    
+    #[test]
+    fn serialize_deserialize_identity() {
+	let leaf = Node::new((Included(1), Excluded(3)));
+	let serialized_leaf = to_string(&leaf).unwrap();
+	let deserialized_leaf = from_str(&serialized_leaf).unwrap();
+	assert_eq!(leaf, deserialized_leaf);
+
+	let mut node = Node::new((Included(2), Included(4)));
+	node.left = Some(Box::new(leaf));
+	let serialized_node = to_string(&node).unwrap();
+	let deserialized_node = from_str(&serialized_node).unwrap();
+	assert_eq!(node, deserialized_node);
+    }
+
+    #[test]
+    fn serialize() {
+	let leaf = Node::new((Included(1), Excluded(3)));
+	let serialized_leaf = to_string(&leaf).unwrap();
+	let deserialized_value: Value = from_str(&serialized_leaf).unwrap();
+	let expected_value = json!({
+	    "key": [
+		{"Included": 1},
+		{"Excluded": 3},
+	    ],
+	    "left": null,
+	    "right": null,
+	    "value": {"Excluded": 3}
+	});
+	assert_eq!(expected_value, deserialized_value);
+
+	let mut node = Node::new((Included(2), Included(4)));
+	node.left = Some(Box::new(leaf));
+	let serialized_node = to_string(&node).unwrap();
+	let deserialized_value: Value = from_str(&serialized_node).unwrap();
+	let expected_value = json!({
+	    "key": [
+		{"Included": 2},
+		{"Included": 4},
+	    ],
+	    "left": {
+		"key": [
+		    {"Included": 1},
+		    {"Excluded": 3},
+		],
+		"left": null,
+		"right": null,
+		"value": {"Excluded": 3},
+	    },
+	    "right": null,
+	    "value": {"Included": 4},
+	});
+	assert_eq!(expected_value, deserialized_value);
+    }
+    
+    #[test]
+    fn deserialize() {
+	let expected_leaf = Node::new((Included(1), Excluded(3)));
+	let value = json!({
+	    "key": [
+		{"Included": 1},
+		{"Excluded": 3},
+	    ],
+	    "left": null,
+	    "right": null,
+	    "value": {"Excluded": 3},
+	});
+	let serialized_value = value.to_string();
+	let deserialized_leaf = from_str(&serialized_value).unwrap();
+	assert_eq!(expected_leaf, deserialized_leaf);
+
+	let mut expected_node = Node::new((Included(2), Included(4)));
+	expected_node.left = Some(Box::new(expected_leaf));
+	let value = json!({
+	    "key": [
+		{"Included": 2},
+		{"Included": 4},
+	    ],
+	    "left": {
+		"key": [
+		    {"Included": 1},
+		    {"Excluded": 3},
+		],
+		"left": null,
+		"right": null,
+		"value": {"Excluded": 3},
+	    },
+	    "right": null,
+	    "value": {"Included": 4},
+	});
+	let serialized_value = value.to_string();
+	let deserialized_node = from_str(&serialized_value).unwrap();
+	assert_eq!(expected_node, deserialized_node);
     }
 }
