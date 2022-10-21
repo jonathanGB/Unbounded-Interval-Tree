@@ -8,6 +8,8 @@ use std::mem;
 use std::ops::Bound;
 use std::ops::Bound::*;
 use std::ops::RangeBounds;
+#[cfg(any(feature="serde", test))]
+use serde::{Serialize, Deserialize};
 
 /// The interval tree storing all the underlying intervals.
 ///
@@ -32,6 +34,7 @@ use std::ops::RangeBounds;
 /// let interval_tree = IntervalTree::from(ranges);
 /// assert_eq!(interval_tree.len(), 2);
 /// ```
+#[cfg_attr(any(feature="serde", test), derive(Serialize, Deserialize))]
 #[derive(Clone, Debug, PartialEq)]
 pub struct IntervalTree<K> {
     root: Option<Box<Node<K>>>,
@@ -904,7 +907,98 @@ impl<'a, K> Iterator for IntervalTreeIter<'a, K> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::{Value, from_str, json, to_string};
+    
+    #[test]
+    fn serialize_deserialize_identity() {
+	let mut tree = IntervalTree::default();
+	let serialized_empty_tree = to_string(&tree).unwrap();
+	let deserialized_empty_tree = from_str(&serialized_empty_tree).unwrap();
+	assert_eq!(tree, deserialized_empty_tree);
 
+	tree.insert((Included(1), Excluded(3)));
+	let serialized_tree = to_string(&tree).unwrap();
+	let deserialized_tree = from_str(&serialized_tree).unwrap();
+	assert_eq!(tree, deserialized_tree);
+    }
+
+    #[test]
+    fn serialize() {
+	let mut tree = IntervalTree::default();
+	let serialized_empty_tree = to_string(&tree).unwrap();
+	let deserialized_empty_value: Value = from_str(&serialized_empty_tree).unwrap();
+	let expected_empty_value = json!({
+	    "root": null,
+	    "size": 0,
+	});
+	assert_eq!(expected_empty_value, deserialized_empty_value);
+
+	tree.insert((Included(2), Included(4)));
+	tree.insert((Included(1), Excluded(3)));
+	
+	let serialized_tree = to_string(&tree).unwrap();
+	let deserialized_tree: Value = from_str(&serialized_tree).unwrap();
+	let expected_value = json!({
+	    "root": {
+		"key": [
+		    {"Included": 2},
+		    {"Included": 4},
+		],
+		"left": {
+		    "key": [
+			{"Included": 1},
+			{"Excluded": 3},
+		    ],
+		    "left": null,
+		    "right": null,
+		    "value": {"Excluded": 3},
+		},
+		"right": null,
+		"value": {"Included": 4},
+	    },
+	    "size": 2,
+	});
+	assert_eq!(expected_value, deserialized_tree);
+    }
+
+    #[test]
+    fn deserialize() {
+	let mut expected_tree = IntervalTree::default();
+	let empty_value = json!({
+	    "root": null,
+	    "size": 0,
+	});
+	let serialized_empty_value = empty_value.to_string();
+	let deserialized_empty_tree = from_str(&serialized_empty_value).unwrap();
+	assert_eq!(expected_tree, deserialized_empty_tree);
+
+	expected_tree.insert((Included(2), Included(4)));
+	expected_tree.insert((Included(1), Excluded(3)));
+	let value = json!({
+	    "root": {
+		"key": [
+		    {"Included": 2},
+		    {"Included": 4},
+		],
+		"left": {
+		    "key": [
+			{"Included": 1},
+			{"Excluded": 3},
+		    ],
+		    "left": null,
+		    "right": null,
+		    "value": {"Excluded": 3},
+		},
+		"right": null,
+		"value": {"Included": 4},
+	    },
+	    "size": 2,
+	});
+	let serialized_value = value.to_string();
+	let deserialized_tree = from_str(&serialized_value).unwrap();
+	assert_eq!(expected_tree, deserialized_tree);
+    }
+    
     #[test]
     fn it_inserts_root() {
         let mut tree = IntervalTree::default();
