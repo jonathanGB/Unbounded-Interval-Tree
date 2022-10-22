@@ -1,6 +1,6 @@
 [package]
 name = "unbounded-interval-tree"
-version = "1.1.1"
+version = "1.1.2"
 authors = ["Jonathan Guillotte-Blouin <jonathan.guillotte.blouin@gmail.com>"]
 edition = "2021"
 license = "MIT"
