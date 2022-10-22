@@ -8,6 +8,10 @@
 //! intervals in the database overlapping a queried interval.
 //!
 //! Note that any type satisfying the [`Ord`] trait can be stored in this tree.
+//! 
+//! # Features
+//! 
+//! * `serde` — Enables using [Serde](http://serde.rs) to serialize/deserialize the interval tree.
 
 /// An interval tree implemented with a binary search tree.
 pub mod interval_tree;
